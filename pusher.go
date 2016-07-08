@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 
 	"container/list"
+
+	"fmt"
 )
 
 type PushMessage struct {
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
+	Event   string
+	Payload interface{}
 }
 
 type PushHandler struct {
@@ -18,11 +20,8 @@ type PushHandler struct {
 }
 
 func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	//text/stream
-	//keep-alive
-
-	//detect CloseNotify
-	//detect Flusher
+	res.Header().Add("Content-Type", "text/event-stream")
+	res.Header().Add("Cache-Control", "no-cache")
 
 	flusher, ok := res.(http.Flusher)
 	if !ok {
@@ -51,15 +50,17 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	//keep receiving data unless clientChan is closed
 	for x := range clientChan {
 
-		b, err := json.Marshal(x)
+		if x.Event != "" {
+			fmt.Fprintf(res, "event: %s\n", x.Event)
+		}
+
+		b, err := json.Marshal(x.Payload)
 		if err != nil {
 			//todo implement logging
 			continue
 		}
 
-		msg := "data:" + string(b)
-
-		res.Write([]byte(msg))
+		fmt.Fprint(res, "data: %s\n\n", string(b))
 
 		flusher.Flush()
 	}
