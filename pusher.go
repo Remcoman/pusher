@@ -10,11 +10,13 @@ import (
 	"fmt"
 )
 
+//PushMessage contains the data which can be sent to the client
 type PushMessage struct {
 	Event   string
 	Payload interface{}
 }
 
+//PushHandler contains a list of all the listening clients and implements http.Handler
 type PushHandler struct {
 	clients *list.List
 }
@@ -35,7 +37,7 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 	clientChan := make(chan PushMessage, 0)
 
-	e := h.clients.PushBack(list.Element{Value: clientChan})
+	e := h.clients.PushBack(clientChan)
 
 	//close the clientChan when the client connection goes down
 	closeChan := notifier.CloseNotify()
@@ -49,7 +51,6 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 	//keep receiving data unless clientChan is closed
 	for x := range clientChan {
-
 		if x.Event != "" {
 			fmt.Fprintf(res, "event: %s\n", x.Event)
 		}
@@ -60,7 +61,7 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 			continue
 		}
 
-		fmt.Fprint(res, "data: %s\n\n", string(b))
+		fmt.Fprintf(res, "data: %s\n\n", string(b))
 
 		flusher.Flush()
 	}
@@ -68,12 +69,14 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	//we only get here when the channel is closed. Right?
 }
 
+//Push pushes a new message to all connected clients
 func (h *PushHandler) Push(msg PushMessage) {
 	for e := h.clients.Front(); e != nil; e = e.Next() {
 		e.Value.(chan PushMessage) <- msg
 	}
 }
 
+//NewHandler creates a new push handler
 func NewHandler() *PushHandler {
 	return &PushHandler{
 		clients: list.New(),
