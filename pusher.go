@@ -8,6 +8,7 @@ import (
 	"container/list"
 
 	"fmt"
+	"sync"
 )
 
 //PushMessage contains the data which can be sent to the client
@@ -18,7 +19,8 @@ type PushMessage struct {
 
 //PushHandler contains a list of all the listening clients and implements http.Handler
 type PushHandler struct {
-	clients *list.List
+	clients     *list.List
+	clientsLock *sync.RWMutex
 }
 
 func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
@@ -37,7 +39,9 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 	clientChan := make(chan PushMessage, 0)
 
+	h.clientsLock.Lock()
 	e := h.clients.PushBack(clientChan)
+	h.clientsLock.Unlock()
 
 	//close the clientChan when the client connection goes down
 	closeChan := notifier.CloseNotify()
@@ -47,7 +51,11 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}()
 
 	//at the end of the function or on error remove the client
-	defer h.clients.Remove(e)
+	defer func() {
+		h.clientsLock.Lock()
+		h.clients.Remove(e)
+		h.clientsLock.Unlock()
+	}()
 
 	//keep receiving data unless clientChan is closed
 	for x := range clientChan {
@@ -71,6 +79,11 @@ func (h *PushHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 //Push pushes a new message to all connected clients
 func (h *PushHandler) Push(msg PushMessage) {
+
+	//we will only block when the push handler is writing to the client list. So multiple goroutines are allowed to read from h.clients
+	h.clientsLock.RLock()
+	defer h.clientsLock.RUnlock()
+
 	for e := h.clients.Front(); e != nil; e = e.Next() {
 		e.Value.(chan PushMessage) <- msg
 	}
@@ -79,6 +92,7 @@ func (h *PushHandler) Push(msg PushMessage) {
 //NewHandler creates a new push handler
 func NewHandler() *PushHandler {
 	return &PushHandler{
-		clients: list.New(),
+		clients:     list.New(),
+		clientsLock: &sync.RWMutex{},
 	}
 }
