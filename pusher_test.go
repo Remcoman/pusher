@@ -97,7 +97,7 @@ func TestReceive(t *testing.T) {
 			return 0, nil, nil
 		})
 
-		for s.Scan() {
+		if s.Scan() {
 			parts := strings.Split(s.Text(), ": ")
 
 			var dst map[string]interface{}
@@ -109,11 +109,11 @@ func TestReceive(t *testing.T) {
 			} else {
 				t.Logf("Got valid data: %s", parts[1])
 			}
-
-			break
+		} else {
+			t.Error("Could not find any data!")
 		}
 
-		done <- true
+		done <- true //signal that we are done
 	}()
 
 	<-done
